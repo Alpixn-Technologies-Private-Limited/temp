@@ -77,6 +77,10 @@ public class SubtaskDTO {
     private LocalDateTime completedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+	public void setCompleted(boolean completed2) {
+		// TODO Auto-generated method stub
+		
+	}
     
 	
 }

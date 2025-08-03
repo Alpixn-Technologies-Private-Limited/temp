@@ -76,7 +76,7 @@ public class User extends AuditableEntity implements UserDetails {
     private LocalDateTime lastLogin;
     
     @Column(name = "login_attempts")
-    private int loginAttempts = 0;
+    private Integer loginAttempts;
     
     @Column(name = "locked_until")
     private LocalDateTime lockedUntil;
@@ -586,4 +586,9 @@ public class User extends AuditableEntity implements UserDetails {
             return user;
         }
     }
+
+	public String getDepartment() {
+		// TODO Auto-generated method stub
+		return null;
+	}
 }

@@ -21,6 +21,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     
     boolean existsByEmail(String email);
     
+ // In UserRepository
+    Optional<User> findById(Long id);
+    
     Page<User> findByRole(UserRole role, Pageable pageable);
     
     Page<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(
@@ -44,5 +47,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     
     @Query("SELECT u FROM User u WHERE u.lockedUntil IS NOT NULL AND u.lockedUntil < :now")
     List<User> findUsersToUnlock(@Param("now") LocalDateTime now);
+    
+    
+    
 }
 

@@ -311,4 +311,9 @@ public class TaskDetailDTO {
         private UserSummaryDTO uploadedBy;
         private LocalDateTime uploadedAt;
     }
+
+	public void setComments(ArrayList<CommentDTO> comments2) {
+		// TODO Auto-generated method stub
+		
+	}
 }

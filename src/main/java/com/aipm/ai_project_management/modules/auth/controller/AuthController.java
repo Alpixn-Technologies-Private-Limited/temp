@@ -2,6 +2,8 @@ package com.aipm.ai_project_management.modules.auth.controller;
 
 import com.aipm.ai_project_management.common.response.ApiResponse;
 import com.aipm.ai_project_management.modules.auth.dto.*;
+import com.aipm.ai_project_management.modules.auth.entity.User;
+import com.aipm.ai_project_management.modules.auth.security.UserPrincipal;
 import com.aipm.ai_project_management.modules.auth.service.AuthService;
 import com.aipm.ai_project_management.modules.auth.service.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +13,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -77,6 +80,31 @@ public class AuthController {
                 .success(true)
                 .message("Logged out successfully")
                 .build());
+    }
+    
+    @GetMapping("/user")
+    public ResponseEntity<ApiResponse<UserDto>> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.<UserDto>builder()
+                    .success(false)
+                    .message("Unauthorized")
+                    .build());
+        }
+
+        UserDto dto = new UserDto();
+        dto.setId(principal.getId());
+        dto.setEmail(principal.getEmail());
+        dto.setName(principal.getName());
+        dto.setAvatar(principal.getAvatar());
+        dto.setRole(principal.getRole());
+
+        return ResponseEntity.ok(
+            ApiResponse.<UserDto>builder()
+                .success(true)
+                .data(dto)
+                .build()
+        );
     }
     
     @PostMapping("/logout-all")

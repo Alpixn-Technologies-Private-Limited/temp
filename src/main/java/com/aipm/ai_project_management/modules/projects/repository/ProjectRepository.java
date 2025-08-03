@@ -9,36 +9,80 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, Long> {
     
-    Page<Project> findByClientId(Long clientId, Pageable pageable);
-    
-    Page<Project> findByManagerId(Long managerId, Pageable pageable);
-    
+    // Find projects by status
     Page<Project> findByStatus(ProjectStatus status, Pageable pageable);
     
-    @Query("SELECT p FROM Project p WHERE p.client.id = :clientId AND p.status = :status")
-    List<Project> findByClientIdAndStatus(@Param("clientId") Long clientId, @Param("status") ProjectStatus status);
+    // Find projects by client
+    Page<Project> findByClientId(Long clientId, Pageable pageable);
     
-    @Query("SELECT p FROM Project p WHERE p.manager.id = :managerId AND p.status = :status")
-    List<Project> findByManagerIdAndStatus(@Param("managerId") Long managerId, @Param("status") ProjectStatus status);
+    // Find projects by project manager - FIXED: projectManagerId → managerId
+    Page<Project> findByManagerId(Long managerId, Pageable pageable);
     
-    @Query("SELECT p FROM Project p LEFT JOIN FETCH p.client LEFT JOIN FETCH p.manager WHERE p.id = :id")
-    Optional<Project> findByIdWithDetails(@Param("id") Long id);
+    // Find projects created by user
+    Page<Project> findByCreatedBy(Long createdBy, Pageable pageable);
     
-    @Query("SELECT p FROM Project p LEFT JOIN FETCH p.teamMembers tm LEFT JOIN FETCH tm.user WHERE p.id = :id")
-    Optional<Project> findByIdWithTeamMembers(@Param("id") Long id);
+    // Find projects by name containing (case insensitive)
+    Page<Project> findByNameContainingIgnoreCase(String name, Pageable pageable);
     
-    @Query("SELECT p FROM Project p WHERE p.name LIKE %:keyword% OR p.description LIKE %:keyword%")
-    Page<Project> searchByKeyword(@Param("keyword") String keyword, Pageable pageable);
+    // Find active projects (not cancelled or completed)
+    @Query("SELECT p FROM Project p WHERE p.status NOT IN ('COMPLETED', 'CANCELLED')")
+    Page<Project> findActiveProjects(Pageable pageable);
     
-    @Query("SELECT COUNT(p) FROM Project p WHERE p.status = :status")
-    long countByStatus(@Param("status") ProjectStatus status);
+    // Find projects ending soon (within given days)
+    @Query("SELECT p FROM Project p WHERE p.endDate BETWEEN :startDate AND :endDate AND p.status = 'IN_PROGRESS'")
+    List<Project> findProjectsEndingSoon(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
     
-    @Query("SELECT p FROM Project p JOIN p.teamMembers tm WHERE tm.user.id = :userId")
-    Page<Project> findProjectsByTeamMemberId(@Param("userId") Long userId, Pageable pageable);
+    // Find overdue projects
+    @Query("SELECT p FROM Project p WHERE p.endDate < :currentDate AND p.status IN ('PLANNING', 'IN_PROGRESS')")
+    List<Project> findOverdueProjects(@Param("currentDate") LocalDate currentDate);
+    
+    // Count projects by status
+    long countByStatus(ProjectStatus status);
+    
+    // Find projects with team member - FIXED: Added proper join condition
+    @Query("SELECT DISTINCT p FROM Project p JOIN p.teamMembers tm WHERE tm.userId = :userId")
+    Page<Project> findProjectsByTeamMember(@Param("userId") Long userId, Pageable pageable);
+    
+    // Get project st atistics - FIXED: progressPercentage → progress
+    @Query("SELECT COUNT(p), SUM(p.budget), AVG(p.progress) FROM Project p WHERE p.status = :status")
+    Object[] getProjectStatsByStatus(@Param("status") ProjectStatus status);
+    
+    // Find projects by date range
+    @Query("SELECT p FROM Project p WHERE p.startDate >= :startDate AND p.endDate <= :endDate")
+    Page<Project> findProjectsByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate, Pageable pageable);
+    
+    // Check if project exists by name (for validation)
+    boolean existsByNameIgnoreCase(String name);
+    
+    // Check if project exists by name excluding current project (for update validation)
+    boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+    
+    // Additional useful methods based on your schema
+    
+    // Find projects by manager (alternative method name for backward compatibility)
+    @Query("SELECT p FROM Project p WHERE p.managerId = :managerId")
+    Page<Project> findByProjectManagerId(@Param("managerId") Long managerId, Pageable pageable);
+    
+    // Find projects with spent amount greater than budget
+    @Query("SELECT p FROM Project p WHERE p.spent > p.budget AND p.budget IS NOT NULL AND p.spent IS NOT NULL")
+    List<Project> findProjectsOverBudget();
+    
+    // Find projects by priority
+    @Query("SELECT p FROM Project p WHERE p.priority = :priority")
+    Page<Project> findByPriority(@Param("priority") String priority, Pageable pageable);
+    
+    // Find projects with low health score (if you want to use AI health score)
+    @Query("SELECT p FROM Project p WHERE p.aiHealthScore < :threshold AND p.aiHealthScore IS NOT NULL")
+    List<Project> findProjectsWithLowHealthScore(@Param("threshold") Double threshold);
+    
+    // Find projects by risk level
+    @Query("SELECT p FROM Project p WHERE p.aiRiskLevel = :riskLevel")
+    List<Project> findProjectsByRiskLevel(@Param("riskLevel") String riskLevel);
 }

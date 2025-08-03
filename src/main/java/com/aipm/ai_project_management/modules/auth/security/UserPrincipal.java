@@ -1,91 +1,77 @@
 package com.aipm.ai_project_management.modules.auth.security;
 
 import com.aipm.ai_project_management.modules.auth.entity.User;
+import com.aipm.ai_project_management.common.enums.UserRole;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.util.Objects;
 
 public class UserPrincipal implements UserDetails {
-    
-    private User user;
-    
-    public UserPrincipal(User user) {
+    private Long id;
+    private String email;
+    private String name;
+    private String avatar;
+    private UserRole role;
+    private User user; // Reference to entity
+
+    // Constructor
+    public UserPrincipal(Long id, String email, String name, String avatar, UserRole role, User user) {
+        this.id = id;
+        this.email = email;
+        this.name = name;
+        this.avatar = avatar;
+        this.role = role;
         this.user = user;
     }
-    
+
+    // Static factory method
     public static UserPrincipal create(User user) {
-        return new UserPrincipal(user);
+        return new UserPrincipal(
+            user.getId(),
+            user.getEmail(),
+            user.getName(),
+            user.getAvatar(),
+            user.getRole(),
+            user
+        );
     }
-    
-    public User getUser() {
-        return user;
-    }
-    
-    public void setUser(User user) {
-        this.user = user;
-    }
-    
-    // Add this method
-    public Long getId() {
-        return user.getId();
-    }
-    
+
+    // Getters
+    public Long getId() { return id; }
+    public String getEmail() { return email; }
+    public String getName() { return name; }
+    public String getAvatar() { return avatar; }
+    public UserRole getRole() { return role; }
+    public User getUser() { return user; }
+
+    // UserDetails methods (implement as needed)
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return user.getAuthorities();
     }
-    
     @Override
     public String getPassword() {
         return user.getPassword();
     }
-    
     @Override
     public String getUsername() {
-        return user.getUsername();
+        return email;
     }
-    
     @Override
     public boolean isAccountNonExpired() {
         return user.isAccountNonExpired();
     }
-    
     @Override
     public boolean isAccountNonLocked() {
         return user.isAccountNonLocked();
     }
-    
     @Override
     public boolean isCredentialsNonExpired() {
         return user.isCredentialsNonExpired();
     }
-    
     @Override
     public boolean isEnabled() {
         return user.isEnabled();
-    }
-    
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        
-        UserPrincipal that = (UserPrincipal) o;
-        
-        return Objects.equals(user, that.user);
-    }
-    
-    @Override
-    public int hashCode() {
-        return user != null ? user.hashCode() : 0;
-    }
-    
-    @Override
-    public String toString() {
-        return "UserPrincipal{" +
-                "user=" + user +
-                '}';
     }
 }

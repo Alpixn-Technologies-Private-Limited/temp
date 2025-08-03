@@ -1,382 +1,611 @@
 package com.aipm.ai_project_management.modules.projects.service.impl;
 
 import com.aipm.ai_project_management.common.enums.ProjectStatus;
-import com.aipm.ai_project_management.common.exceptions.ResourceNotFoundException;
-import com.aipm.ai_project_management.modules.auth.entity.User;
+import com.aipm.ai_project_management.common.enums.UserRole;
 import com.aipm.ai_project_management.modules.auth.repository.UserRepository;
-import com.aipm.ai_project_management.modules.clients.entity.Client;
-import com.aipm.ai_project_management.modules.clients.repository.ClientRepository;
 import com.aipm.ai_project_management.modules.projects.dto.*;
 import com.aipm.ai_project_management.modules.projects.entity.Project;
 import com.aipm.ai_project_management.modules.projects.entity.ProjectMilestone;
 import com.aipm.ai_project_management.modules.projects.entity.ProjectTeamMember;
-import com.aipm.ai_project_management.modules.projects.repository.ProjectMilestoneRepository;
 import com.aipm.ai_project_management.modules.projects.repository.ProjectRepository;
+import com.aipm.ai_project_management.modules.projects.repository.ProjectMilestoneRepository;
 import com.aipm.ai_project_management.modules.projects.repository.ProjectTeamMemberRepository;
 import com.aipm.ai_project_management.modules.projects.service.ProjectService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 @Transactional
 public class ProjectServiceImpl implements ProjectService {
-    
-    private final ProjectRepository projectRepository;
-    private final ProjectTeamMemberRepository teamMemberRepository;
-    private final ProjectMilestoneRepository milestoneRepository;
-    private final ClientRepository clientRepository;
-    private final UserRepository userRepository;
-    
+
+    @Autowired
+    private ProjectRepository projectRepository;
+
+    @Autowired
+    private ProjectMilestoneRepository milestoneRepository;
+
+    @Autowired
+    private ProjectTeamMemberRepository teamMemberRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
     @Override
-    public ProjectDTO createProject(CreateProjectRequest request) {
-        log.debug("Creating new project: {}", request.getName());
-        
-        Client client = clientRepository.findById(request.getClientId())
-            .orElseThrow(() -> new ResourceNotFoundException("Client not found with id: " + request.getClientId()));
-        
-        User manager = null;
-        if (request.getManagerId() != null) {
-            manager = userRepository.findById(request.getManagerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Manager not found with id: " + request.getManagerId()));
+    public ProjectResponseDto createProject(ProjectCreateDto createDto, Long currentUserId) {
+    	if (projectRepository.existsByNameIgnoreCase(createDto.getName())) {
+            throw new RuntimeException("Project with this name already exists");
         }
-        
-        Project project = Project.builder()
-            .name(request.getName())
-            .description(request.getDescription())
-            .client(client)
-            .manager(manager)
-            .status(request.getStatus())
-            .priority(request.getPriority())
-            .budget(request.getBudget())
-            .startDate(request.getStartDate())
-            .endDate(request.getEndDate())
-            .build();
-        
-        project = projectRepository.save(project);
-        log.info("Created project with id: {}", project.getId());
-        
-        return convertToDTO(project);
+
+        Project project = new Project();
+        project.setName(createDto.getName());
+        project.setDescription(createDto.getDescription());
+        project.setStatus(createDto.getStatus());
+        project.setStartDate(createDto.getStartDate());
+        project.setEndDate(createDto.getEndDate());
+        project.setEstimatedHours(createDto.getEstimatedHours());
+        project.setBudget(createDto.getBudget());
+        project.setClientId(createDto.getClientId());
+        project.setProjectManagerId(createDto.getProjectManagerId());
+        project.setPriority(createDto.getPriority()); // <-- ADD THIS LINE
+        project.setCreatedBy(currentUserId);
+        project.setUpdatedBy(currentUserId);
+
+
+        Project savedProject = projectRepository.save(project);
+
+        // Add project manager as team member
+        if (createDto.getProjectManagerId() != null) {
+            ProjectTeamMember manager = new ProjectTeamMember();
+            manager.setProject(savedProject);
+            manager.setUserId(createDto.getProjectManagerId());
+            manager.setRole(UserRole.PROJECT_MANAGER);
+            manager.setAssignedBy(currentUserId);
+            manager.setJoinedAt(LocalDateTime.now());
+            manager.setLeftAt(null); // Active
+            teamMemberRepository.save(manager);
+        }
+
+        return convertToResponseDto(savedProject);
     }
-    
+
     @Override
-    public ProjectDTO updateProject(Long id, UpdateProjectRequest request) {
-        log.debug("Updating project with id: {}", id);
-        
-        Project project = projectRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + id));
-        
-        if (request.getName() != null) {
-            project.setName(request.getName());
-        }
-        if (request.getDescription() != null) {
-            project.setDescription(request.getDescription());
-        }
-        if (request.getManagerId() != null) {
-            User manager = userRepository.findById(request.getManagerId())
-                .orElseThrow(() -> new ResourceNotFoundException("Manager not found with id: " + request.getManagerId()));
-            project.setManager(manager);
-        }
-        if (request.getStatus() != null) {
-            project.setStatus(request.getStatus());
-        }
-        if (request.getPriority() != null) {
-            project.setPriority(request.getPriority());
-        }
-        if (request.getBudget() != null) {
-            project.setBudget(request.getBudget());
-        }
-        if (request.getStartDate() != null) {
-            project.setStartDate(request.getStartDate());
-        }
-        if (request.getEndDate() != null) {
-            project.setEndDate(request.getEndDate());
-        }
-        if (request.getActualStartDate() != null) {
-            project.setActualStartDate(request.getActualStartDate());
-        }
-        if (request.getActualEndDate() != null) {
-            project.setActualEndDate(request.getActualEndDate());
-        }
-        if (request.getProgress() != null) {
-            project.setProgress(request.getProgress());
-        }
-        
-        project = projectRepository.save(project);
-        log.info("Updated project with id: {}", project.getId());
-        
-        return convertToDTO(project);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public ProjectDTO getProjectById(Long id) {
-        Project project = projectRepository.findByIdWithDetails(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + id));
-        return convertToDTO(project);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> getAllProjects(Pageable pageable) {
-        return projectRepository.findAll(pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> getProjectsByClientId(Long clientId, Pageable pageable) {
-        return projectRepository.findByClientId(clientId, pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> getProjectsByManagerId(Long managerId, Pageable pageable) {
-        return projectRepository.findByManagerId(managerId, pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> getProjectsByStatus(ProjectStatus status, Pageable pageable) {
-        return projectRepository.findByStatus(status, pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> searchProjects(String keyword, Pageable pageable) {
-        return projectRepository.searchByKeyword(keyword, pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ProjectDTO> getProjectsByTeamMemberId(Long userId, Pageable pageable) {
-        return projectRepository.findProjectsByTeamMemberId(userId, pageable)
-            .map(this::convertToDTO);
-    }
-    
-    @Override
-    public void deleteProject(Long id) {
-        log.debug("Deleting project with id: {}", id);
-        
-        if (!projectRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Project not found with id: " + id);
-        }
-        
-        projectRepository.deleteById(id);
-        log.info("Deleted project with id: {}", id);
-    }
-    
-    @Override
-    public ProjectTeamMemberDTO addTeamMember(Long projectId, Long userId, String role) {
-        log.debug("Adding team member {} to project {}", userId, projectId);
-        
+    public ProjectResponseDto updateProject(Long projectId, ProjectUpdateDto updateDto, Long currentUserId) {
         Project project = projectRepository.findById(projectId)
-            .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + projectId));
-        
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        
-        if (teamMemberRepository.existsByProjectIdAndUserId(projectId, userId)) {
-            throw new IllegalArgumentException("User is already a team member of this project");
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to update this project");
+        }
+
+        if (updateDto.getName() != null && !updateDto.getName().equals(project.getName())) {
+            if (projectRepository.existsByNameIgnoreCaseAndIdNot(updateDto.getName(), projectId)) {
+                throw new RuntimeException("Project with this name already exists");
+            }
+            project.setName(updateDto.getName());
         }
         
-        ProjectTeamMember teamMember = ProjectTeamMember.builder()
-            .project(project)
-            .user(user)
-            .role(role)
-            .build();
-        
-        teamMember = teamMemberRepository.save(teamMember);
-        log.info("Added team member {} to project {}", userId, projectId);
-        
-        return convertToTeamMemberDTO(teamMember);
+        if (updateDto.getPriority() != null) {
+            project.setPriority(updateDto.getPriority()); // <-- ADD THIS LINE
+        }
+
+        if (updateDto.getDescription() != null) {
+            project.setDescription(updateDto.getDescription());
+        }
+        if (updateDto.getStatus() != null) {
+            project.setStatus(updateDto.getStatus());
+        }
+        if (updateDto.getStartDate() != null) {
+            project.setStartDate(updateDto.getStartDate());
+        }
+        if (updateDto.getEndDate() != null) {
+            project.setEndDate(updateDto.getEndDate());
+        }
+        if (updateDto.getEstimatedHours() != null) {
+            project.setEstimatedHours(updateDto.getEstimatedHours());
+        }
+        if (updateDto.getActualHours() != null) {
+            project.setActualHours(updateDto.getActualHours());
+        }
+        if (updateDto.getBudget() != null) {
+            project.setBudget(updateDto.getBudget());
+        }
+        if (updateDto.getSpentAmount() != null) {
+            project.setSpentAmount(updateDto.getSpentAmount());
+        }
+        if (updateDto.getProgressPercentage() != null) {
+            project.setProgressPercentage(updateDto.getProgressPercentage());
+        }
+        if (updateDto.getClientId() != null) {
+            project.setClientId(updateDto.getClientId());
+        }
+        if (updateDto.getProjectManagerId() != null) {
+            project.setProjectManagerId(updateDto.getProjectManagerId());
+        }
+
+        project.setUpdatedBy(currentUserId);
+
+        Project updatedProject = projectRepository.save(project);
+        return convertToResponseDto(updatedProject);
     }
-    
+
     @Override
-    public void removeTeamMember(Long projectId, Long userId) {
-        log.debug("Removing team member {} from project {}", userId, projectId);
-        
-        ProjectTeamMember teamMember = teamMemberRepository.findByProjectIdAndUserId(projectId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Team member not found"));
-        
+    @Transactional(readOnly = true)
+    public ProjectResponseDto getProjectById(Long projectId, Long currentUserId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!hasProjectAccess(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to view this project");
+        }
+
+        return convertToResponseDto(project);
+    }
+
+    @Override
+    public void deleteProject(Long projectId, Long currentUserId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to delete this project");
+        }
+
+        projectRepository.delete(project);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> getAllProjects(Pageable pageable, Long currentUserId) {
+        Page<Project> projects = projectRepository.findAll(pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> getProjectsByStatus(String status, Pageable pageable, Long currentUserId) {
+        ProjectStatus projectStatus = ProjectStatus.valueOf(status.toUpperCase());
+        Page<Project> projects = projectRepository.findByStatus(projectStatus, pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> getProjectsByClient(Long clientId, Pageable pageable, Long currentUserId) {
+        Page<Project> projects = projectRepository.findByClientId(clientId, pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> getProjectsByManager(Long managerId, Pageable pageable, Long currentUserId) {
+        Page<Project> projects = projectRepository.findByManagerId(managerId, pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> searchProjectsByName(String name, Pageable pageable, Long currentUserId) {
+        Page<Project> projects = projectRepository.findByNameContainingIgnoreCase(name, pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProjectResponseDto> getMyProjects(Long userId, Pageable pageable) {
+        Page<Project> projects = projectRepository.findProjectsByTeamMember(userId, pageable);
+        return projects.map(this::convertToResponseDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectResponseDto> getActiveProjects(Long currentUserId) {
+        Page<Project> projects = projectRepository.findActiveProjects(Pageable.unpaged());
+        return projects.getContent().stream()
+                .map(this::convertToResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectResponseDto> getProjectsEndingSoon(int days, Long currentUserId) {
+        LocalDate startDate = LocalDate.now();
+        LocalDate endDate = startDate.plusDays(days);
+
+        List<Project> projects = projectRepository.findProjectsEndingSoon(startDate, endDate);
+        return projects.stream()
+                .map(this::convertToResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectResponseDto> getOverdueProjects(Long currentUserId) {
+        LocalDate currentDate = LocalDate.now();
+        List<Project> projects = projectRepository.findOverdueProjects(currentDate);
+        return projects.stream()
+                .map(this::convertToResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProjectStatsDto getProjectStatistics(Long currentUserId) {
+        ProjectStatsDto stats = new ProjectStatsDto();
+
+        stats.setTotalProjects(projectRepository.count());
+        stats.setActiveProjects(projectRepository.countByStatus(ProjectStatus.IN_PROGRESS));
+        stats.setCompletedProjects(projectRepository.countByStatus(ProjectStatus.COMPLETED));
+        stats.setPlanningProjects(projectRepository.countByStatus(ProjectStatus.PLANNING));
+        stats.setOnHoldProjects(projectRepository.countByStatus(ProjectStatus.ON_HOLD));
+        stats.setCancelledProjects(projectRepository.countByStatus(ProjectStatus.CANCELLED));
+
+        LocalDate currentDate = LocalDate.now();
+        stats.setOverdueProjects((long) projectRepository.findOverdueProjects(currentDate).size());
+
+        return stats;
+    }
+
+    @Override
+    public ProjectTeamMemberDto addTeamMember(Long projectId, ProjectTeamMemberDto memberDto, Long currentUserId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage team members");
+        }
+
+        // Use leftAt IS NULL for "active"
+        if (teamMemberRepository.existsActiveByProjectIdAndUserId(projectId, memberDto.getUserId())) {
+            throw new RuntimeException("User is already a team member of this project");
+        }
+
+        ProjectTeamMember teamMember = new ProjectTeamMember();
+        teamMember.setProject(project);
+        teamMember.setUserId(memberDto.getUserId());
+        teamMember.setRole(memberDto.getRole());
+        teamMember.setHourlyRate(memberDto.getHourlyRate());
+        teamMember.setAssignedBy(currentUserId);
+        teamMember.setJoinedAt(LocalDateTime.now());
+        teamMember.setLeftAt(null);
+
+        ProjectTeamMember savedMember = teamMemberRepository.save(teamMember);
+        return convertToTeamMemberDto(savedMember);
+    }
+
+    @Override
+    public ProjectTeamMemberDto updateTeamMember(Long projectId, Long memberId, ProjectTeamMemberDto memberDto, Long currentUserId) {
+        ProjectTeamMember teamMember = teamMemberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Team member not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage team members");
+        }
+
+        if (memberDto.getRole() != null) {
+            teamMember.setRole(memberDto.getRole());
+        }
+        if (memberDto.getHourlyRate() != null) {
+            teamMember.setHourlyRate(memberDto.getHourlyRate());
+        }
+        if (memberDto.getIsActive() != null) {
+            // Instead of isActive, use leftAt
+            if (!memberDto.getIsActive()) {
+                teamMember.setLeftAt(LocalDateTime.now());
+            } else {
+                teamMember.setLeftAt(null);
+            }
+        }
+
+        ProjectTeamMember updatedMember = teamMemberRepository.save(teamMember);
+        return convertToTeamMemberDto(updatedMember);
+    }
+
+    @Override
+    public void removeTeamMember(Long projectId, Long memberId, Long currentUserId) {
+        ProjectTeamMember teamMember = teamMemberRepository.findById(memberId)
+                .orElseThrow(() -> new RuntimeException("Team member not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage team members");
+        }
+
         teamMember.setLeftAt(LocalDateTime.now());
         teamMemberRepository.save(teamMember);
-        
-        log.info("Removed team member {} from project {}", userId, projectId);
     }
-    
+
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectTeamMemberDTO> getProjectTeamMembers(Long projectId) {
-        List<ProjectTeamMember> teamMembers = teamMemberRepository.findActiveTeamMembersByProjectId(projectId);
+    public List<ProjectTeamMemberDto> getProjectTeamMembers(Long projectId, Long currentUserId) {
+        if (!hasProjectAccess(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to view team members");
+        }
+
+        List<ProjectTeamMember> teamMembers = teamMemberRepository.findActiveByProjectId(projectId);
         return teamMembers.stream()
-            .map(this::convertToTeamMemberDTO)
-            .collect(Collectors.toList());
+                .map(this::convertToTeamMemberDto)
+                .collect(Collectors.toList());
     }
-    
+
     @Override
-    public ProjectMilestoneDTO createMilestone(Long projectId, ProjectMilestoneDTO milestoneDTO) {
-        log.debug("Creating milestone for project: {}", projectId);
-        
+    public ProjectMilestoneDto addMilestone(Long projectId, ProjectMilestoneDto milestoneDto, Long currentUserId) {
         Project project = projectRepository.findById(projectId)
-            .orElseThrow(() -> new ResourceNotFoundException("Project not found with id: " + projectId));
-        
-        ProjectMilestone milestone = ProjectMilestone.builder()
-            .project(project)
-            .name(milestoneDTO.getName())
-            .description(milestoneDTO.getDescription())
-            .dueDate(milestoneDTO.getDueDate())
-            .status(milestoneDTO.getStatus())
-            .sortOrder(milestoneDTO.getSortOrder())
-            .build();
-        
-        milestone = milestoneRepository.save(milestone);
-        log.info("Created milestone with id: {}", milestone.getId());
-        
-        return convertToMilestoneDTO(milestone);
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage milestones");
+        }
+
+        ProjectMilestone milestone = new ProjectMilestone();
+        milestone.setProject(project);
+        milestone.setName(milestoneDto.getName());
+        milestone.setDescription(milestoneDto.getDescription());
+        milestone.setDueDate(milestoneDto.getDueDate());
+        milestone.setCreatedBy(currentUserId);
+        milestone.setUpdatedBy(currentUserId);
+
+        ProjectMilestone savedMilestone = milestoneRepository.save(milestone);
+        return convertToMilestoneDto(savedMilestone);
     }
-    
+
     @Override
-    public ProjectMilestoneDTO updateMilestone(Long milestoneId, ProjectMilestoneDTO milestoneDTO) {
-        log.debug("Updating milestone with id: {}", milestoneId);
-        
+    public ProjectMilestoneDto updateMilestone(Long projectId, Long milestoneId, ProjectMilestoneDto milestoneDto, Long currentUserId) {
         ProjectMilestone milestone = milestoneRepository.findById(milestoneId)
-            .orElseThrow(() -> new ResourceNotFoundException("Milestone not found with id: " + milestoneId));
-        
-        milestone.setName(milestoneDTO.getName());
-        milestone.setDescription(milestoneDTO.getDescription());
-        milestone.setDueDate(milestoneDTO.getDueDate());
-        milestone.setStatus(milestoneDTO.getStatus());
-        milestone.setProgress(milestoneDTO.getProgress());
-        milestone.setSortOrder(milestoneDTO.getSortOrder());
-        milestone.setUpdatedAt(LocalDateTime.now());
-        
-        milestone = milestoneRepository.save(milestone);
-        log.info("Updated milestone with id: {}", milestone.getId());
-        
-        return convertToMilestoneDTO(milestone);
+                .orElseThrow(() -> new RuntimeException("Milestone not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage milestones");
+        }
+
+        if (milestoneDto.getName() != null) {
+            milestone.setName(milestoneDto.getName());
+        }
+        if (milestoneDto.getDescription() != null) {
+            milestone.setDescription(milestoneDto.getDescription());
+        }
+        if (milestoneDto.getDueDate() != null) {
+            milestone.setDueDate(milestoneDto.getDueDate());
+        }
+        if (milestoneDto.getProgressPercentage() != null) {
+            milestone.setProgressPercentage(milestoneDto.getProgressPercentage());
+        }
+
+        milestone.setUpdatedBy(currentUserId);
+
+        ProjectMilestone updatedMilestone = milestoneRepository.save(milestone);
+        return convertToMilestoneDto(updatedMilestone);
     }
-    
+
+    @Override
+    public void deleteMilestone(Long projectId, Long milestoneId, Long currentUserId) {
+        ProjectMilestone milestone = milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new RuntimeException("Milestone not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to manage milestones");
+        }
+
+        milestoneRepository.delete(milestone);
+    }
+
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectMilestoneDTO> getProjectMilestones(Long projectId) {
-        List<ProjectMilestone> milestones = milestoneRepository.findByProjectIdOrderBySortOrder(projectId);
-        return milestones.stream()
-            .map(this::convertToMilestoneDTO)
-            .collect(Collectors.toList());
-    }
-    
-    @Override
-    public void deleteMilestone(Long milestoneId) {
-        log.debug("Deleting milestone with id: {}", milestoneId);
-        
-        if (!milestoneRepository.existsById(milestoneId)) {
-            throw new ResourceNotFoundException("Milestone not found with id: " + milestoneId);
+    public List<ProjectMilestoneDto> getProjectMilestones(Long projectId, Long currentUserId) {
+        if (!hasProjectAccess(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to view milestones");
         }
-        
-        milestoneRepository.deleteById(milestoneId);
-        log.info("Deleted milestone with id: {}", milestoneId);
+
+        Page<ProjectMilestone> milestones = milestoneRepository.findByProjectId(projectId, Pageable.unpaged());
+        return milestones.getContent().stream()
+                .map(this::convertToMilestoneDto)
+                .collect(Collectors.toList());
     }
-    
+
+    @Override
+    public ProjectMilestoneDto completeMilestone(Long projectId, Long milestoneId, Long currentUserId) {
+        ProjectMilestone milestone = milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new RuntimeException("Milestone not found"));
+
+        if (!hasProjectAccess(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to complete milestones");
+        }
+
+        milestone.setIsCompleted(true);
+        milestone.setCompletedDate(LocalDate.now());
+        milestone.setProgressPercentage(100);
+        milestone.setUpdatedBy(currentUserId);
+
+        ProjectMilestone updatedMilestone = milestoneRepository.save(milestone);
+        return convertToMilestoneDto(updatedMilestone);
+    }
+
+    @Override
+    public ProjectResponseDto updateProjectProgress(Long projectId, Integer progressPercentage, Long currentUserId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!canManageProject(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to update project progress");
+        }
+
+        project.setProgressPercentage(progressPercentage);
+        project.setUpdatedBy(currentUserId);
+
+        if (progressPercentage == 100) {
+            project.setStatus(ProjectStatus.COMPLETED);
+        }
+
+        Project updatedProject = projectRepository.save(project);
+        return convertToResponseDto(updatedProject);
+    }
+
     @Override
     @Transactional(readOnly = true)
-    public long getProjectCountByStatus(ProjectStatus status) {
-        return projectRepository.countByStatus(status);
+    public ProjectHealthDto getProjectHealth(Long projectId, Long currentUserId) {
+        if (!hasProjectAccess(projectId, currentUserId)) {
+            throw new RuntimeException("Access denied: You don't have permission to view project health");
+        }
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        ProjectHealthDto health = new ProjectHealthDto();
+        health.setProjectId(projectId);
+        health.setProjectName(project.getName());
+
+        LocalDate currentDate = LocalDate.now();
+        boolean isOverdue = project.getEndDate() != null && project.getEndDate().isBefore(currentDate) &&
+                !project.getStatus().equals(ProjectStatus.COMPLETED);
+
+        health.setIsOverdue(isOverdue);
+        health.setBudgetUtilization(calculateBudgetUtilization(project));
+        health.setTimeUtilization(calculateTimeUtilization(project));
+        health.setOverallHealth(calculateOverallHealth(project, isOverdue));
+
+        return health;
     }
     
+    
+    
+
+    private boolean isAdmin(Long userId) {
+        return userRepository.findById(userId)
+            .map(user -> user.getRole() == UserRole.ADMIN)
+            .orElse(false);
+    }
+
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectDTO> getRecentProjects(int limit) {
-        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return projectRepository.findAll(pageable).getContent()
-            .stream()
-            .map(this::convertToDTO)
-            .collect(Collectors.toList());
+    public boolean hasProjectAccess(Long projectId, Long userId) {
+        // Allow if user is active team member
+        if (teamMemberRepository.existsActiveByProjectIdAndUserId(projectId, userId)) return true;
+        // Allow if user is project manager
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project != null && userId.equals(project.getProjectManagerId())) return true;
+        // Optionally, check if user is admin...
+        if (isAdmin(userId)) return true;
+        return false;
     }
-    
-    private ProjectDTO convertToDTO(Project project) {
-        ProjectDTO.ProjectDTOBuilder builder = ProjectDTO.builder()
-            .id(project.getId())
-            .name(project.getName())
-            .description(project.getDescription())
-            .status(project.getStatus())
-            .priority(project.getPriority())
-            .progress(project.getProgress())
-            .budget(project.getBudget())
-            .spent(project.getSpent())
-            .startDate(project.getStartDate())
-            .endDate(project.getEndDate())
-            .actualStartDate(project.getActualStartDate())
-            .actualEndDate(project.getActualEndDate())
-            .aiHealthScore(project.getAiHealthScore())
-            .aiRiskLevel(project.getAiRiskLevel())
-            .createdAt(project.getCreatedAt())
-            .updatedAt(project.getUpdatedAt());
-        
-        if (project.getClient() != null) {
-            builder.client(ProjectDTO.ClientSummaryDTO.builder()
-                .id(project.getClient().getId())
-                .name(project.getClient().getName())
-                .companyName(project.getClient().getName()) // Using name as company name
-                .build());
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean canManageProject(Long projectId, Long userId) {
+        List<UserRole> userRoles = teamMemberRepository.findUserRolesInProject(projectId, userId);
+        if (isAdmin(userId)) return true;
+        return userRoles.contains(UserRole.PROJECT_MANAGER) ||userRoles.contains(UserRole.ADMIN);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isProjectMember(Long projectId, Long userId) {
+        // Returns true if user has ever been a member, regardless of leftAt
+        return teamMemberRepository.findByProjectIdAndUserId(projectId, userId).isPresent();
+    }
+
+    // Helper conversion methods
+    private ProjectResponseDto convertToResponseDto(Project project) {
+        ProjectResponseDto dto = new ProjectResponseDto();
+        dto.setId(project.getId());
+        dto.setName(project.getName());
+        dto.setDescription(project.getDescription());
+        dto.setStatus(project.getStatus());
+        dto.setStartDate(project.getStartDate());
+        dto.setEndDate(project.getEndDate());
+        dto.setEstimatedHours(project.getEstimatedHours());
+        dto.setActualHours(project.getActualHours());
+        dto.setBudget(project.getBudget());
+        dto.setSpentAmount(project.getSpentAmount());
+        dto.setProgressPercentage(project.getProgressPercentage());
+        dto.setClientId(project.getClientId());
+        dto.setProjectManagerId(project.getProjectManagerId());
+        dto.setCreatedBy(project.getCreatedBy());
+        dto.setCreatedAt(project.getCreatedAt());
+        dto.setUpdatedAt(project.getUpdatedAt());
+
+        // Set team member count using leftAt IS NULL (active members)
+        dto.setTeamMemberCount((int) teamMemberRepository.countActiveByProjectId(project.getId()));
+
+        return dto;
+    }
+
+    private ProjectTeamMemberDto convertToTeamMemberDto(ProjectTeamMember teamMember) {
+        ProjectTeamMemberDto dto = new ProjectTeamMemberDto();
+        dto.setId(teamMember.getId());
+        dto.setUserId(teamMember.getUserId());
+        dto.setRole(teamMember.getRole());
+        dto.setAssignedDate(teamMember.getAssignedDate());
+        dto.setRemovedDate(teamMember.getLeftAt() == null ? null : teamMember.getLeftAt().toLocalDate());
+        dto.setIsActive(teamMember.getLeftAt() == null);
+        dto.setHourlyRate(teamMember.getHourlyRate());
+        dto.setProjectId(teamMember.getProject().getId());
+        dto.setProjectName(teamMember.getProject().getName());
+        dto.setAssignedBy(teamMember.getAssignedBy());
+        dto.setCreatedAt(teamMember.getCreatedAt());
+        dto.setUpdatedAt(teamMember.getUpdatedAt());
+
+        return dto;
+    }
+
+    private ProjectMilestoneDto convertToMilestoneDto(ProjectMilestone milestone) {
+        ProjectMilestoneDto dto = new ProjectMilestoneDto();
+        dto.setId(milestone.getId());
+        dto.setName(milestone.getName());
+        dto.setDescription(milestone.getDescription());
+        dto.setDueDate(milestone.getDueDate());
+        dto.setCompletedDate(milestone.getCompletedDate());
+        dto.setIsCompleted(milestone.getIsCompleted());
+        dto.setProgressPercentage(milestone.getProgressPercentage());
+        dto.setProjectId(milestone.getProject().getId());
+        dto.setProjectName(milestone.getProject().getName());
+        dto.setCreatedBy(milestone.getCreatedBy());
+        dto.setCreatedAt(milestone.getCreatedAt());
+        dto.setUpdatedAt(milestone.getUpdatedAt());
+
+        return dto;
+    }
+
+    // Health calculation helper methods
+    private Double calculateBudgetUtilization(Project project) {
+        if (project.getBudget() == null || project.getBudget().doubleValue() == 0) {
+            return 0.0;
         }
-        
-        if (project.getManager() != null) {
-            builder.manager(ProjectDTO.UserSummaryDTO.builder()
-                .id(project.getManager().getId())
-                .firstName(project.getManager().getName()) // Using name as firstName
-                .lastName("") // Empty since we only have name field
-                .email(project.getManager().getEmail())
-                .build());
+        if (project.getSpentAmount() == null) {
+            return 0.0;
         }
-        
-        return builder.build();
+        return (project.getSpentAmount().doubleValue() / project.getBudget().doubleValue()) * 100;
     }
-    
-    private ProjectTeamMemberDTO convertToTeamMemberDTO(ProjectTeamMember teamMember) {
-        return ProjectTeamMemberDTO.builder()
-            .id(teamMember.getId())
-            .projectId(teamMember.getProject().getId())
-            .userId(teamMember.getUser().getId())
-            .firstName(teamMember.getUser().getName()) // Using name as firstName
-            .lastName("") // Empty since we only have name field
-            .email(teamMember.getUser().getEmail())
-            .role(teamMember.getRole())
-            .allocationPercentage(teamMember.getAllocationPercentage())
-            .hourlyRate(teamMember.getHourlyRate())
-            .joinedAt(teamMember.getJoinedAt())
-            .leftAt(teamMember.getLeftAt())
-            .build();
+
+    private Double calculateTimeUtilization(Project project) {
+        if (project.getEstimatedHours() == null || project.getEstimatedHours() == 0) {
+            return 0.0;
+        }
+        if (project.getActualHours() == null) {
+            return 0.0;
+        }
+        return ((double) project.getActualHours() / project.getEstimatedHours()) * 100;
     }
-    
-    private ProjectMilestoneDTO convertToMilestoneDTO(ProjectMilestone milestone) {
-        return ProjectMilestoneDTO.builder()
-            .id(milestone.getId())
-            .projectId(milestone.getProject().getId())
-            .name(milestone.getName())
-            .description(milestone.getDescription())
-            .dueDate(milestone.getDueDate())
-            .status(milestone.getStatus())
-            .progress(milestone.getProgress())
-            .sortOrder(milestone.getSortOrder())
-            .createdAt(milestone.getCreatedAt())
-            .updatedAt(milestone.getUpdatedAt())
-            .build();
+
+    private String calculateOverallHealth(Project project, boolean isOverdue) {
+        if (isOverdue) {
+            return "Critical";
+        }
+
+        Double budgetUtil = calculateBudgetUtilization(project);
+        Double timeUtil = calculateTimeUtilization(project);
+
+        if (budgetUtil > 90 || timeUtil > 90) {
+            return "At Risk";
+        } else if (budgetUtil > 75 || timeUtil > 75) {
+            return "Warning";
+        } else {
+            return "Healthy";
+        }
     }
 }

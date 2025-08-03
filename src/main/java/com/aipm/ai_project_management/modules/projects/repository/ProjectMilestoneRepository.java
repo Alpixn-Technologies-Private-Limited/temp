@@ -1,7 +1,8 @@
 package com.aipm.ai_project_management.modules.projects.repository;
 
 import com.aipm.ai_project_management.modules.projects.entity.ProjectMilestone;
-import com.aipm.ai_project_management.modules.projects.entity.ProjectMilestone.MilestoneStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,20 +14,24 @@ import java.util.List;
 @Repository
 public interface ProjectMilestoneRepository extends JpaRepository<ProjectMilestone, Long> {
     
-    List<ProjectMilestone> findByProjectIdOrderBySortOrder(Long projectId);
+    // Find milestones by project
+    Page<ProjectMilestone> findByProjectId(Long projectId, Pageable pageable);
     
-    List<ProjectMilestone> findByProjectIdAndStatus(Long projectId, MilestoneStatus status);
+    // Find completed milestones by project
+    List<ProjectMilestone> findByProjectIdAndIsCompleted(Long projectId, Boolean isCompleted);
     
-    @Query("SELECT pm FROM ProjectMilestone pm WHERE pm.project.id = :projectId AND pm.dueDate BETWEEN :startDate AND :endDate")
-    List<ProjectMilestone> findByProjectIdAndDueDateBetween(
-        @Param("projectId") Long projectId, 
-        @Param("startDate") LocalDate startDate, 
-        @Param("endDate") LocalDate endDate
-    );
+    // Find milestones due soon
+    @Query("SELECT m FROM ProjectMilestone m WHERE m.dueDate BETWEEN :startDate AND :endDate AND m.isCompleted = false")
+    List<ProjectMilestone> findMilestonesDueSoon(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
     
-    @Query("SELECT pm FROM ProjectMilestone pm WHERE pm.dueDate < :date AND pm.status != 'COMPLETED'")
-    List<ProjectMilestone> findOverdueMilestones(@Param("date") LocalDate date);
+    // Find overdue milestones
+    @Query("SELECT m FROM ProjectMilestone m WHERE m.dueDate < :currentDate AND m.isCompleted = false")
+    List<ProjectMilestone> findOverdueMilestones(@Param("currentDate") LocalDate currentDate);
     
-    @Query("SELECT COUNT(pm) FROM ProjectMilestone pm WHERE pm.project.id = :projectId AND pm.status = :status")
-    long countByProjectIdAndStatus(@Param("projectId") Long projectId, @Param("status") MilestoneStatus status);
+    // Count milestones by project and completion status
+    long countByProjectIdAndIsCompleted(Long projectId, Boolean isCompleted);
+    
+    // Find milestones by project and date range
+    @Query("SELECT m FROM ProjectMilestone m WHERE m.project.id = :projectId AND m.dueDate BETWEEN :startDate AND :endDate")
+    List<ProjectMilestone> findByProjectAndDateRange(@Param("projectId") Long projectId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

@@ -49,9 +49,9 @@ public class TaskBoardDTO {
         return view;
     }
 
-    public void setView(String view) {
-        this.view = view;
-    }
+//    public void setView(String view) {
+//        this.view = view;
+//    }
     
    
     public static class TaskColumnDTO {
@@ -84,4 +84,15 @@ public class TaskBoardDTO {
         private Integer taskCount;
         private List<TaskDTO> tasks = new ArrayList<>();
     }
+
+
+	
+
+
+
+
+	public void setView(String view2) {
+		// TODO Auto-generated method stub
+		
+	}
 }

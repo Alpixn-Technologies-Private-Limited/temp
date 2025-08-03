@@ -11,15 +11,18 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 	    "com.aipm.ai_project_management.modules.users.repository",
 	    "com.aipm.ai_project_management.modules.clients.repository",
 	    "com.aipm.ai_project_management.modules.tasks.repository",
-	    "com.aipm.ai_project_management.modules.projects.repository"
+	    "com.aipm.ai_project_management.modules.projects.repository",
+	    "com.aipm.ai_project_management.modules.team.repository"
 	})
 @EntityScan(basePackages = {
 	    "com.aipm.ai_project_management.modules.auth.entity",
 	    "com.aipm.ai_project_management.modules.users.entity",
 	    "com.aipm.ai_project_management.modules.clients.entity",
 	    "com.aipm.ai_project_management.modules.tasks.entity",
-	    "com.aipm.ai_project_management.modules.projects.entity"
+	    "com.aipm.ai_project_management.modules.projects.entity",
+	    "com.aipm.ai_project_management.modules.team.entity"
 	})
+
 public class AiProjectManagementSoftwareApplication {
 
 	public static void main(String[] args) {
